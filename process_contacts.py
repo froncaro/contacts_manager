@@ -124,6 +124,7 @@ def filter_contacts(input_file, output_dir):
     processed_contacts = []
 
     # Process and write filtered contacts
+    filtered_counts = {}
     for label, condition in filters.items():
         filtered_contacts = [
             contact for contact in contacts
@@ -137,12 +138,69 @@ def filter_contacts(input_file, output_dir):
         write_csv(filtered_contacts, csv_file)
         write_vcf(filtered_contacts, vcf_file)
 
+        # Track the count of filtered contacts
+        filtered_counts[label] = len(filtered_contacts)
+
     # Create 'all_others' for contacts that don't match any filter
     remaining_contacts = [contact for contact in contacts if not contact_in_list(contact, processed_contacts)]
     all_others_csv = os.path.join(output_dir, "all_others.csv")
     all_others_vcf = os.path.join(output_dir, "all_others.vcf")
     write_csv(remaining_contacts, all_others_csv)
     write_vcf(remaining_contacts, all_others_vcf)
+    filtered_counts["all_others"] = len(remaining_contacts)
+
+    # Perform checks
+    check_results_file = os.path.join(output_dir, "check_results.txt")
+    with open(check_results_file, "w", encoding="utf-8") as check_file:
+        # Check 1: Total contacts match
+        total_filtered = sum(filtered_counts.values())
+        check_file.write(f"Initial number of contacts: {len(contacts)}\n")
+        check_file.write(f"Total number of filtered contacts: {total_filtered}\n")
+        if len(contacts) == total_filtered:
+            check_file.write("Check 1 PASSED: Total contacts match.\n")
+        else:
+            check_file.write("Check 1 FAILED: Total contacts do not match.\n")
+
+        # Check 2: Duplicate contacts
+        email_map = {}
+        phone_map = {}
+        duplicates = []
+
+        for contact in contacts:
+            if contact["Email"]:
+                if contact["Email"] in email_map:
+                    email_map[contact["Email"]].append(contact)
+                else:
+                    email_map[contact["Email"]] = [contact]
+            if contact["Phone"]:
+                if contact["Phone"] in phone_map:
+                    phone_map[contact["Phone"]].append(contact)
+                else:
+                    phone_map[contact["Phone"]] = [contact]
+
+        # Write duplicate emails
+        duplicate_emails = {email: details for email, details in email_map.items() if len(details) > 1}
+        if duplicate_emails:
+            check_file.write("Check 2 FAILED: Duplicate emails found.\n")
+            for email, contacts in duplicate_emails.items():
+                check_file.write(f"\nDuplicate email: {email}\n")
+                for contact in contacts:
+                    check_file.write(f"  - Name: {contact['Name']}, Phone: {contact['Phone']}\n")
+        else:
+            check_file.write("Check 2 PASSED: No duplicate emails found.\n")
+
+        # Write duplicate phones
+        duplicate_phones = {phone: details for phone, details in phone_map.items() if len(details) > 1}
+        if duplicate_phones:
+            check_file.write("\nCheck 2 FAILED: Duplicate phone numbers found.\n")
+            for phone, contacts in duplicate_phones.items():
+                check_file.write(f"\nDuplicate phone: {phone}\n")
+                for contact in contacts:
+                    check_file.write(f"  - Name: {contact['Name']}, Email: {contact['Email']}\n")
+        else:
+            check_file.write("\nCheck 2 PASSED: No duplicate phone numbers found.\n")
+
+    print(f"Check results saved to: {check_results_file}")
 
 
 if __name__ == "__main__":
